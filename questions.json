@@ -1,0 +1,46 @@
+{
+  "questions": [
+    {
+      "question": "What does VPN stand for?",
+      "type": "multiple_choice",
+      "options": [
+        "Virtual Private Network",
+        "Variable Protection Node",
+        "Virtual Public Network",
+        "Virtual Protocol Network"
+      ],
+      "answer": "Virtual Private Network",
+      "category": "Networking",
+      "difficulty": "easy"
+    },
+    {
+      "question": "A strong password should include uppercase letters, lowercase letters, numbers, and symbols.",
+      "type": "true_false",
+      "answer": "true",
+      "category": "Security Basics",
+      "difficulty": "easy"
+    },
+    {
+      "question": "What is the name of the type of attack that tricks users into revealing sensitive information through fake emails or websites?",
+      "type": "short_answer",
+      "answer": "phishing",
+      "category": "Social Engineering",
+      "difficulty": "medium"
+    },
+    {
+      "question": "Which protocol is used to securely browse websites?",
+      "type": "multiple_choice",
+      "options": ["HTTP", "WWW", "HTTPS", "SMTP"],
+      "answer": "HTTPS",
+      "category": "Web Security",
+      "difficulty": "medium"
+    },
+    {
+      "question": "What encryption method uses the same key for both encryption and decryption?",
+      "type": "short_answer",
+      "answer": "symmetric encryption",
+      "category": "Cryptography",
+      "difficulty": "hard"
+    }
+  ]
+}
