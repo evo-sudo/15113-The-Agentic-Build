@@ -1,6 +1,6 @@
 import json
 import random
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from datetime import datetime
 
 from storage import load_history, save_history
@@ -8,15 +8,31 @@ from storage import load_history, save_history
 QUESTION_FILE = "questions.json"
 
 
+# ---------------------------------------------------------
+# Count questions by difficulty (used in quiz.py)
+# ---------------------------------------------------------
+def count_questions_by_difficulty(all_questions):
+    counts = {"easy": 0, "medium": 0, "hard": 0}
+    for q in all_questions:
+        diff = q.get("difficulty")
+        if diff in counts:
+            counts[diff] += 1
+    return counts
+
+
+# ---------------------------------------------------------
+# Load questions
+# ---------------------------------------------------------
 def load_questions() -> List[Dict[str, Any]]:
     with open(QUESTION_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data.get("questions", [])
 
 
+# ---------------------------------------------------------
+# Difficulty scoring
+# ---------------------------------------------------------
 def _difficulty_score(difficulty: str) -> int:
-    # “The quiz also includes difficulty levels easy, medium, hard,
-    # which affect both question selection and scoring.”
     if difficulty == "easy":
         return 1
     if difficulty == "medium":
@@ -26,6 +42,9 @@ def _difficulty_score(difficulty: str) -> int:
     return 1
 
 
+# ---------------------------------------------------------
+# Feedback storage helpers
+# ---------------------------------------------------------
 def _get_feedback_map() -> Dict[str, List[int]]:
     history = load_history()
     return history.get("_feedback", {})
@@ -38,7 +57,6 @@ def _save_feedback_map(feedback_map: Dict[str, List[int]]) -> None:
 
 
 def _question_key(q: Dict[str, Any]) -> str:
-    # Use question text as key
     return q["question"]
 
 
@@ -48,13 +66,18 @@ def _average_rating(ratings: List[int]) -> float:
     return sum(ratings) / len(ratings)
 
 
+# ---------------------------------------------------------
+# Select questions WITHOUT repetition (weighted)
+# ---------------------------------------------------------
 def select_questions(
     all_questions: List[Dict[str, Any]],
     difficulty_choice: str,
     num_questions: int,
 ) -> List[Dict[str, Any]]:
+
     feedback_map = _get_feedback_map()
 
+    # Filter by difficulty
     if difficulty_choice == "all":
         pool = all_questions
     else:
@@ -63,22 +86,37 @@ def select_questions(
     if not pool:
         return []
 
-    # “The application selects questions randomly based on the chosen difficulty
-    # and adjusts selection based on previous user feedback.”
+    # Weight questions by feedback
     weights = []
     for q in pool:
         key = _question_key(q)
         ratings = feedback_map.get(key, [])
         avg = _average_rating(ratings)
-        # Base weight 1, plus a boost from average rating (1–5)
-        weight = 1.0 + (avg / 5.0)
+        weight = 1.0 + (avg / 5.0)  # 1.0–2.0 range
         weights.append(weight)
 
+    # Weighted sampling WITHOUT replacement
     k = min(num_questions, len(pool))
-    selected = random.choices(pool, weights=weights, k=k)
+
+    selected: List[Dict[str, Any]] = []
+    available_pool = pool.copy()
+    available_weights = weights.copy()
+
+    for _ in range(k):
+        choice = random.choices(available_pool, weights=available_weights, k=1)[0]
+        selected.append(choice)
+
+        # Remove chosen question so it cannot repeat
+        idx = available_pool.index(choice)
+        available_pool.pop(idx)
+        available_weights.pop(idx)
+
     return selected
 
 
+# ---------------------------------------------------------
+# Ask a question
+# ---------------------------------------------------------
 def ask_question(q: Dict[str, Any]) -> Tuple[bool, int]:
     print("\nCategory:", q.get("category", "Unknown"))
     print("Difficulty:", q.get("difficulty", "Unknown"))
@@ -95,11 +133,10 @@ def ask_question(q: Dict[str, Any]) -> Tuple[bool, int]:
         options = q.get("options", [])
         for idx, opt in enumerate(options, start=1):
             print(f"{idx}. {opt}")
+
         while True:
             choice = input("Enter the number of your choice: ").strip()
             if not choice.isdigit():
-                # “If the user enters an invalid menu option or answer choice
-                # the program displays an error message and prompts the user again…”
                 print("Invalid input. Please enter a valid option number.")
                 continue
             idx = int(choice)
@@ -126,6 +163,7 @@ def ask_question(q: Dict[str, Any]) -> Tuple[bool, int]:
     elif q_type == "short_answer":
         ans = input("Your answer: ").strip().lower()
         user_correct = (ans == str(correct_answer).strip().lower())
+
     else:
         print("Unknown question type; treating as incorrect.")
         user_correct = False
@@ -138,35 +176,35 @@ def ask_question(q: Dict[str, Any]) -> Tuple[bool, int]:
         return False, 0
 
 
+# ---------------------------------------------------------
+# Feedback collection
+# ---------------------------------------------------------
 def collect_feedback(q: Dict[str, Any]) -> None:
     key = _question_key(q)
     feedback_map = _get_feedback_map()
 
-    # “After each question the user is asked to provide feedback but they can skip.”
     while True:
         resp = input("Rate this question 1-5 (or press Enter to skip): ").strip()
         if resp == "":
             return
         if not resp.isdigit():
-            print("Invalid input. Please enter a number between 1 and 5, or press Enter to skip.")
+            print("Invalid input. Please enter a number between 1 and 5.")
             continue
         rating = int(resp)
         if rating < 1 or rating > 5:
             print("Invalid rating. Please enter a number between 1 and 5.")
             continue
+
         feedback_map.setdefault(key, []).append(rating)
         _save_feedback_map(feedback_map)
         print("Thank you for your feedback.")
         return
 
 
-def record_quiz_result(
-    username: str,
-    score: int,
-    max_score: int,
-    num_correct: int,
-    num_questions: int,
-) -> None:
+# ---------------------------------------------------------
+# Record quiz result
+# ---------------------------------------------------------
+def record_quiz_result(username: str, score: int, max_score: int, num_correct: int, num_questions: int) -> None:
     history = load_history()
     user_history = history.get(username, [])
     accuracy = (num_correct / num_questions) * 100 if num_questions > 0 else 0.0
@@ -179,14 +217,19 @@ def record_quiz_result(
         "num_questions": num_questions,
         "accuracy": accuracy,
     }
+
     user_history.append(entry)
     history[username] = user_history
     save_history(history)
 
 
+# ---------------------------------------------------------
+# Show user stats
+# ---------------------------------------------------------
 def show_user_stats(username: str) -> None:
     history = load_history()
     user_history = history.get(username, [])
+
     if not user_history:
         print("No quiz history available yet.")
         return
@@ -201,6 +244,7 @@ def show_user_stats(username: str) -> None:
     print(f"  Cumulative score: {total_score} / {total_max}")
     print(f"  Average accuracy: {avg_accuracy:.2f}%")
     print("  Most recent attempts:")
+
     for h in user_history[-5:]:
         print(
             f"    {h['timestamp']}: "
