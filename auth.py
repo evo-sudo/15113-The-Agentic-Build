@@ -1,17 +1,59 @@
 import os
+import sys
 import hashlib
-import getpass
+import msvcrt
 from typing import Dict, Any, Optional
 
 from storage import load_users, save_users
 
 
+# ---------------------------------------------------------
+# Windows-compatible password masking with *
+# ---------------------------------------------------------
+def input_password(prompt="Password: "):
+    print(prompt, end="", flush=True)
+    password = ""
+
+    while True:
+        ch = msvcrt.getwch()
+
+        # Enter key
+        if ch == "\r":
+            print()
+            break
+
+        # Backspace
+        if ch == "\b":
+            if len(password) > 0:
+                password = password[:-1]
+                sys.stdout.write("\b \b")
+                sys.stdout.flush()
+            continue
+
+        # Ignore special keys (arrows, etc.)
+        if ch in ("\x00", "\xe0"):
+            msvcrt.getwch()  # skip the next character
+            continue
+
+        # Normal character
+        password += ch
+        sys.stdout.write("*")
+        sys.stdout.flush()
+
+    return password
+
+
+# ---------------------------------------------------------
+# Password hashing
+# ---------------------------------------------------------
 def _hash_password(password: str, salt: bytes) -> str:
-    # PBKDF2 with SHA-256
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
     return dk.hex()
 
 
+# ---------------------------------------------------------
+# Account creation
+# ---------------------------------------------------------
 def create_account() -> Optional[str]:
     users = load_users()
 
@@ -21,18 +63,17 @@ def create_account() -> Optional[str]:
             print("Username cannot be empty.")
             continue
         if username in users:
-            # “If a user tries to create an account with a username that already exists,
-            # the program prompts them to enter a different username.”
             print("That username already exists. Please choose a different username.")
             continue
         break
 
     while True:
-        password = getpass.getpass("Enter a new password: ")
+        password = input_password("Enter a new password: ")
         if not password:
             print("Password cannot be empty.")
             continue
-        confirm = getpass.getpass("Confirm password: ")
+
+        confirm = input_password("Confirm password: ")
         if password != confirm:
             print("Passwords do not match. Try again.")
             continue
@@ -46,10 +87,14 @@ def create_account() -> Optional[str]:
         "password_hash": password_hash,
     }
     save_users(users)
+
     print(f"Account created successfully. You are now logged in as '{username}'.")
     return username
 
 
+# ---------------------------------------------------------
+# Login
+# ---------------------------------------------------------
 def login() -> Optional[str]:
     users = load_users()
     if not users:
@@ -66,13 +111,11 @@ def login() -> Optional[str]:
         salt = bytes.fromhex(user_record["salt"])
         stored_hash = user_record["password_hash"]
 
-        password = getpass.getpass("Enter password: ")
+        password = input_password("Enter password: ")
         attempt_hash = _hash_password(password, salt)
 
         if attempt_hash == stored_hash:
             print(f"Login successful. Welcome, {username}!")
             return username
         else:
-            # “If a user enters the wrong password, the program allows them to retry login.”
             print("Incorrect password. Please try again.")
-            # loop continues
